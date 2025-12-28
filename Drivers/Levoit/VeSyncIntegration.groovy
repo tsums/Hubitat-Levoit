@@ -150,12 +150,6 @@ def Boolean updateDevices() {
     // referesh interval as close to constant as possible.
     runIn((int) settings.refreshInterval, updateDevices)
 
-    def command = [
-            'method': 'getPurifierStatus',
-            'source': 'APP',
-            'data': [:]
-        ]
-
     sendEvent(name: 'heartbeat', value: 'syncing', isStateChange: true, descriptionText: 'Waiting on update from VeSync servers.')
 
     for (e in state.deviceList) {
@@ -169,6 +163,12 @@ def Boolean updateDevices() {
             logDebug "Updating ${dni}"
 
             def dev = getChildDevice(dni)
+
+            def command = [
+                'method': dev.hasCapability('RelativeHumidityMeasurement') ? 'getHumidifierStatus' :  'getPurifierStatus',
+                'source': 'APP',
+                'data': [:]
+            ]
 
             sendBypassRequest(dev, command) { resp ->
                 if (checkHttpResponse('update', resp)) {
@@ -211,6 +211,8 @@ private deviceType(code) {
         case 'LAP-C601S-WUSR':
         case 'LAP-C601S-WEU':
             return '600S'
+        case 'Classic300S':
+            return 'Classic300SHumidifier'
     }
 
     return 'N/A'
@@ -258,7 +260,7 @@ private Boolean getDevices() {
                     if (dtype == '200S') {
                         newList[device.cid] = device.configModule
                         newList[device.cid + '-nl'] = device.configModule
-                    } else if (dtype == '400S' || dtype == '300S' || dtype == '600S') {
+                    } else if (dtype == '400S' || dtype == '300S' || dtype == '600S' || dtype == 'Classic300SHumidifier') {
                         newList[device.cid] = device.configModule
                     }
                 }
@@ -349,6 +351,22 @@ private Boolean getDevices() {
                             equip1.name = device.deviceName
                             equip1.label = device.deviceName
                         }
+                    } else if (dtype == 'Classic300SHumidifier') {
+                        if (equip1 == null) {
+                            logDebug "Adding ${device.deviceName}"
+                            equip1 = addChildDevice('Levoit Classic300S Humidifier', device.cid, [name: device.deviceName, label: device.deviceName, isComponent: false])
+                            equip1.updateDataValue('configModule', device.configModule)
+                            equip1.updateDataValue('cid', device.cid)
+                            equip1.updateDataValue('uuid', device.uuid)
+                        }
+                        else {
+                            // In case the device name has changed.
+                            logDebug "Updating ${device.deviceName} / " + dtype
+                            equip1.name = device.deviceName
+                            equip1.label = device.deviceName
+                        }
+                    } else {
+                        logDebug "No driver available for device ${device.deviceType} / ${device.deviceName} / ${device.macID}"
                     }
                 }
 
@@ -357,10 +375,9 @@ private Boolean getDevices() {
                 updateDevices()
                 result = true
             }
+            return result
         }
-        return result
-    }
-    catch (e) {
+    } catch (e) {
         logError e.getMessage()
         return false
     }
