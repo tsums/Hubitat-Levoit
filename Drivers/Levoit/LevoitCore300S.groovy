@@ -79,15 +79,15 @@ metadata {
 }
 
 def installed() {
-	logDebug "Installed with settings: ${settings}"
+    logDebug "Installed with settings: ${settings}"
     updated();
 }
 
 def updated() {
-	logDebug "Updated with settings: ${settings}"
+    logDebug "Updated with settings: ${settings}"
     state.clear()
     unschedule()
-	initialize()
+    initialize()
 
     runIn(3, update)
 
@@ -96,21 +96,21 @@ def updated() {
 }
 
 def uninstalled() {
-	logDebug "Uninstalled app"
+    logDebug "Uninstalled app"
 }
 
 def initialize() {
-	logDebug "initializing"
+    logDebug "initializing"
 }
 
 def on() {
     logDebug "on()"
-	handlePower(true)
+    handlePower(true)
     handleEvent("switch", "on")
 
-	if (state.speed != null) {
+    if (state.speed != null) {
         setSpeed(state.speed)
-	}
+    }
     else {
         setSpeed("low")
     }
@@ -125,17 +125,17 @@ def on() {
 
 def off() {
     logDebug "off()"
-	handlePower(false)
+    handlePower(false)
     handleEvent("switch", "off")
     handleEvent("speed", "off")
 }
 
 def toggle() {
     logDebug "toggle()"
-	if (device.currentValue("switch") == "on")
-		off()
-	else
-		on()
+    if (device.currentValue("switch") == "on")
+        off()
+    else
+        on()
 }
 
 def cycleSpeed() {
@@ -208,7 +208,7 @@ def setMode(mode) {
     
     handleMode(mode)
     state.mode = mode
-	handleEvent("mode", mode)
+    handleEvent("mode", mode)
     
     switch(mode)
     {
@@ -243,8 +243,8 @@ def setAutoMode(mode, roomSize) {
     state.auto_mode = mode;
     state.room_size = roomSize;
 
-	handleEvent("auto_mode", mode)
-	handleEvent("mode", "auto")
+    handleEvent("auto_mode", mode)
+    handleEvent("mode", "auto")
     handleEvent("speed",  "auto")    
 }
 
@@ -290,8 +290,8 @@ def mapIntegerToSpeed(speed) {
 
 def logDebug(msg) {
     if (settings?.debugOutput) {
-		log.debug msg
-	}
+        log.debug msg
+    }
 }
 
 def logError(msg) {
@@ -314,13 +314,13 @@ def handlePower(on) {
                 data: [ enabled: on, id: 0 ],
                 "method": "setSwitch",
                 "source": "APP" ]) { resp ->
-			if (checkHttpResponse("handleOn", resp))
-			{
+            if (checkHttpResponse("handleOn", resp))
+            {
                 def operation = on ? "ON" : "OFF"
                 logDebug "turned ${operation}()"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
@@ -333,12 +333,12 @@ def handleSpeed(speed) {
                 "method": "setLevel",
                 "source": "APP"
             ]) { resp ->
-			if (checkHttpResponse("handleSpeed", resp))
-			{
+            if (checkHttpResponse("handleSpeed", resp))
+            {
                 logDebug "Set speed"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
@@ -351,12 +351,12 @@ def handleMode(mode) {
                 "method": "setPurifierMode",
                 "source": "APP"
             ]) { resp ->
-			if (checkHttpResponse("handleMode", resp))
-			{
+            if (checkHttpResponse("handleMode", resp))
+            {
                 logDebug "Set mode"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
@@ -369,12 +369,12 @@ def handleAutoMode(mode) {
                 "method": "setAutoPreference",
                 "source": "APP"
             ]) { resp ->
-			if (checkHttpResponse("handleMode", resp))
-			{
+            if (checkHttpResponse("handleMode", resp))
+            {
                 logDebug "Set mode"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
@@ -387,12 +387,12 @@ def handleAutoMode(mode, size) {
                 "method": "setAutoPreference",
                 "source": "APP"
             ]) { resp ->
-			if (checkHttpResponse("handleMode", resp))
-			{
+            if (checkHttpResponse("handleMode", resp))
+            {
                 logDebug "Set mode"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
@@ -407,15 +407,15 @@ def update() {
                 "source": "APP",
                 "data": [:]
             ]) { resp ->
-			if (checkHttpResponse("update", resp))
-			{
+            if (checkHttpResponse("update", resp))
+            {
                 def status = resp.data.result
                 if (status == null)
                     logError "No status returned from getPurifierStatus: ${resp.msg}"
                 else
                     result = update(status, null)                
-			}
-		}
+            }
+        }
     return result
 }
 
@@ -538,26 +538,26 @@ def handleDisplayOn(displayOn)
                 "method": "setDisplay",
                 "source": "APP"
             ]) { resp ->
-			if (checkHttpResponse("handleDisplayOn", resp))
-			{
+            if (checkHttpResponse("handleDisplayOn", resp))
+            {
                 logDebug "Set display"
-				result = true
-			}
-		}
+                result = true
+            }
+        }
     return result
 }
 
 def checkHttpResponse(action, resp) {
-	if (resp.status == 200 || resp.status == 201 || resp.status == 204)
-		return true
-	else if (resp.status == 400 || resp.status == 401 || resp.status == 404 || resp.status == 409 || resp.status == 500)
-	{
-		log.error "${action}: ${resp.status} - ${resp.getData()}"
-		return false
-	}
-	else
-	{
-		log.error "${action}: unexpected HTTP response: ${resp.status}"
-		return false
-	}
+    if (resp.status == 200 || resp.status == 201 || resp.status == 204)
+        return true
+    else if (resp.status == 400 || resp.status == 401 || resp.status == 404 || resp.status == 409 || resp.status == 500)
+    {
+        log.error "${action}: ${resp.status} - ${resp.getData()}"
+        return false
+    }
+    else
+    {
+        log.error "${action}: unexpected HTTP response: ${resp.status}"
+        return false
+    }
 }
