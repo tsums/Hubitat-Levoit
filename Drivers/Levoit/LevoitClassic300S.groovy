@@ -2,7 +2,7 @@
 
 MIT License
 
-Copyright (c) Ian Luo
+Copyright (c) Trevor Summerfield
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -44,17 +44,19 @@ metadata {
             attribute 'waterTankLifted', 'boolean'
             attribute 'mistLevel', 'number'
             attribute 'status', 'string'
+            attribute 'nightLightLevel', 'number'
 
-            command 'setTargetHumidity', [[name: 'TargetHumidity*', type: 'NUMBER', description: 'TargetHumidity (30 - 80)']]
-            command 'setDisplay', [[name: 'Display*', type: 'ENUM', description: 'Display', constraints: ['on', 'off']]]
-            command 'setMode', [[name: 'Mode*', type: 'ENUM', description: 'Mode', constraints: ['manual', 'sleep', 'auto']]]
-            command 'setMistLevel', [[name: 'MistLevel', type: 'NUMBER', description: 'Mist level (1-9)']]
-            command 'toggle'
+            command 'setTargetHumidity', [[name: 'TargetHumidity', type: 'NUMBER', description: 'Target Humidity (30 - 80)']]
+            command 'setDisplay', [[name: 'Display', type: 'ENUM', description: 'Display', constraints: ['on', 'off']]]
+            command 'setMode', [[name: 'Mode', type: 'ENUM', description: 'Mode', constraints: ['manual', 'sleep', 'auto']]]
+            command 'setMistLevel', [[name: 'MistLevel', type: 'NUMBER', description: 'Mist Level (1-9)']]
+            command 'setNightLightLevel', [[name: 'LightLevel', type: 'NUMBER', description: 'Night Light Level (0-100)']]
             command 'refresh'
         }
 
     preferences {
         input('debugOutput', 'bool', title: 'Enable debug logging?', defaultValue: false, required: false)
+        input('traceLogging', 'bool', title: 'Enable trace logging?', defaultValue: false, required: false)
     }
 }
 
@@ -71,8 +73,9 @@ def updated() {
 
     runIn(3, refresh)
 
-    // Turn off debug log in 30 minutes
     if (settings?.debugOutput) runIn(1800, logDebugOff)
+    if (settings?.traceLogging) runIn(1800, logTraceOff)
+
 }
 
 def uninstalled() {
@@ -108,10 +111,8 @@ def toggle() {
 
 def setLevel(value) {
     logDebug "setLevel ${value}"
-    setMode('manual') // always manual if setLevel() cmd was called
     mistLevel = convertRange(value, 0, 100, 1, 9, true)
-    handleMistLevel(mistLevel)
-    refresh()
+    setMistLevel(mistLevel)
 }
 
 def setMistLevel(mistLevel) {
@@ -136,8 +137,13 @@ def setMode(mode) {
 
 def setDisplay(displayOn) {
     logDebug "setDisplay(${displayOn})"
-
     handleDisplay(displayOn)
+    refresh()
+}
+
+def setNightLightLevel(level) {
+    logDebug "setNightLightLevel(${level})"
+    handleNightLightLevel(level)
     refresh()
 }
 
@@ -177,7 +183,6 @@ def handleMode(mode) {
     resp ->
         if (checkHttpResponse('handleMode', resp)) {
             logDebug "Set mode ${mode}"
-            result = true
         }
   }
 }
@@ -199,15 +204,30 @@ def handleTargetHumidity(targetHumidity) {
     logDebug "handleTargetHumidity(${target_humidity})"
 
     parent.sendBypassRequest(device, [
-    data: ['target_humidity': targetHumidity],
-    'method': 'setTargetHumidity',
-    'source': 'APP'
-  ]) {
-    resp ->
-        if (checkHttpResponse('handleTargetHumidity', resp)) {
-            logDebug "Successfully set target humidity ${targetHumidity}"
-        }
-  }
+        data: ['target_humidity': targetHumidity],
+        'method': 'setTargetHumidity',
+        'source': 'APP'
+    ]) {
+        resp ->
+            if (checkHttpResponse('handleTargetHumidity', resp)) {
+                logDebug "Successfully set target humidity ${targetHumidity}"
+            }
+    }
+}
+
+def handleNightLightLevel(level) {
+    logDebug "handleNightLightLevel(${level})"
+
+    parent.sendBypassRequest(device, [
+        data: ['night_light_brightness': level],
+        'method': 'setNightLightBrightness',
+        'source': 'APP'
+    ]) {
+        resp ->
+            if (checkHttpResponse('handleNightLightLevel', resp)) {
+                logDebug "Successfully set nightlight level ${level}"
+            }
+    }
 }
 
 def refresh() {
@@ -231,21 +251,23 @@ def update() {
 }
 
 def update(status, nightLight) {
+    logTrace 'update() from parent'
     handleUpdateResponse(status)
 }
 
 def handleUpdateResponse(response) {
+    log.info "Received status update."
     handleEvent('switch', response.result.enabled ? 'on' : 'off')
     handleEvent('humidity', response.result.humidity)
-    handleEvent('mistLevel', response.result.mist_level)
-    handleEvent('level', convertRange(response.result.mist_level, 1, 3, 0, 100, true))
+    handleEvent('mistLevel', response.result.mist_virtual_level)
+    handleEvent('level', convertRange(response.result.mist_virtual_level, 1, 9, 0, 100, true))
     handleEvent('targetHumidity', response.result.configuration.auto_target_humidity)
     handleEvent('mode', response.result.mode)
     handleEvent('display', response.result.display ? 'on' : 'off')
     handleEvent('lacksWater', response.result.water_lacks)
     handleEvent('waterTankLifted', response.result.water_tank_lifted)
     handleEvent('automaticStop', response.result.automatic_stop_reach_target)
-
+    handleEvent('nightLightLevel',  response.result.night_light_brightness)
     updateStatusString()
 }
 
@@ -255,23 +277,31 @@ def updateStatusString() {
     def lvl = device.currentValue('level')
     def target = device.currentValue('targetHumidity')
     def mode = device.currentValue('mode')
+    def humidity = device.currentValue('humidity')
 
-    if (device.currentValue('switch') == 'off') {
+    if (device.currentValue('waterTankLifted') == 'true') {
+        statusStr = 'Tank Removed'
+    } else if (device.currentValue('lacksWater') == 'true') {
+        staturStr = 'Tank Empty'
+    } else if (device.currentValue('switch') == 'off') {
         statusStr = 'Off'
     } else if (mode == 'auto' || mode == 'sleep') {
-        if (device.currentValue('automaticStop') == "true") {
-            statusStr = "Target Reached (${target}%)"
+        if (device.currentValue('automaticStop') == 'true') {
+            statusStr = "Target (${target}%) Reached: ${humidity}%"
         } else {
-            statusStr = "Auto L${lvl} to ${target}%"
+            statusStr = "Auto L${lvl} to ${target}%: ${humidity}%"
         }
     } else {
-        statusStr = "Manual L${state.level}"
+        statusStr = "Manual L${lvl}"
     }
     handleEvent('status', statusStr)
 }
 
 private void handleEvent(name, val) {
-    logDebug "handleEvent(${name}, ${val})"
+    logTrace "handleEvent(${name}, ${val})"
+    if (device.currentValue(name).toString() != val.toString()) {
+        log.info "${name} is ${val}"
+    }
     device.sendEvent(name: name, value: val)
 }
 
@@ -304,6 +334,12 @@ def checkHttpResponse(action, resp) {
     return false
 }
 
+def logTrace(msg) {
+    if (settings?.traceLogging) {
+        log.trace msg
+    }
+}
+
 def logDebug(msg) {
     if (settings?.debugOutput) {
         log.debug msg
@@ -316,4 +352,8 @@ def logError(msg) {
 
 void logDebugOff() {
     if (settings?.debugOutput) device.updateSetting('debugOutput', [type: 'bool', value: false])
+}
+
+void logTraceOff() {
+    if (settings?.traceLogging) device.updateSetting('traceLogging', [type: 'bool', value: false])
 }
